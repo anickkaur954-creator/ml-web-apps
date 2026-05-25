@@ -91,9 +91,9 @@ col1, col2 = st.columns([1.2, 1])
 with col1:
     st.subheader("✏️ Draw a Digit")
 
-    # Check if streamlit-canvas is available
+    # Check if streamlit-drawable-canvas is available
     try:
-        from streamlit_canvas import st_canvas
+        from streamlit_drawable_canvas import st_canvas
 
         # Create canvas
         canvas_result = st_canvas(
