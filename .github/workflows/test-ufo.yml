@@ -1,0 +1,89 @@
+name: Test UFO Backend
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'ufo-project/backend/**'
+      - '.github/workflows/test-ufo.yml'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          cd ufo-project/backend
+          pip install -r requirements.txt
+
+      - name: Check model file
+        run: |
+          if [ -f "ufo-project/backend/ufo-model.pkl" ]; then
+            echo "✅ UFO model file found"
+            ls -lh ufo-project/backend/ufo-model.pkl
+          else
+            echo "❌ UFO model file not found"
+            exit 1
+          fi
+
+      - name: Test imports
+        run: |
+          cd ufo-project/backend
+          python -c "from app import app, model, COUNTRIES; print(f'✅ App imported successfully'); print(f'✅ Available countries: {COUNTRIES}')"
+
+      - name: Start backend (background)
+        run: |
+          cd ufo-project/backend
+          pip install uvicorn
+          uvicorn app:app --host 0.0.0.0 --port 8000 &
+          sleep 5
+
+      - name: Test API health endpoint
+        run: |
+          response=$(curl -s http://localhost:8000/)
+          echo "Health check response: $response"
+          echo "$response" | grep -q "ok" && echo "✅ Health check passed" || exit 1
+
+      - name: Test prediction endpoint
+        run: |
+          response=$(curl -s -X POST "http://localhost:8000/predict" \
+            -H "Content-Type: application/json" \
+            -d '{"seconds": 120, "latitude": 40.7128, "longitude": -74.0060}')
+          echo "Prediction response: $response"
+          echo "$response" | grep -q "country" && echo "✅ Prediction endpoint works" || exit 1
+
+      - name: Test countries endpoint
+        run: |
+          response=$(curl -s http://localhost:8000/countries)
+          echo "Countries response: $response"
+          echo "$response" | grep -q "Australia" && echo "✅ Countries endpoint works" || exit 1
+
+      - name: Workflow Summary
+        run: |
+          echo "## ✅ UFO Backend Tests Completed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tests Run:** 4" >> $GITHUB_STEP_SUMMARY
+          echo "  - Health check ✓" >> $GITHUB_STEP_SUMMARY
+          echo "  - Prediction endpoint ✓" >> $GITHUB_STEP_SUMMARY
+          echo "  - Countries endpoint ✓" >> $GITHUB_STEP_SUMMARY
+          echo "  - Model loading ✓" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** All tests passed ✨" >> $GITHUB_STEP_SUMMARY

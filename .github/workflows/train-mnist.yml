@@ -1,0 +1,88 @@
+name: Train MNIST Model
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'mnist-project/backend/train_model.py'
+      - 'mnist-project/notebooks/**'
+      - '.github/workflows/train-mnist.yml'
+  schedule:
+    # Run training weekly (Sunday at 2 AM UTC)
+    - cron: '0 2 * * 0'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install tensorflow numpy pillow scikit-learn pandas
+
+      - name: Create models directory
+        run: |
+          mkdir -p mnist-project/models
+
+      - name: Train MNIST model
+        run: |
+          cd mnist-project/backend
+          python train_model.py
+        timeout-minutes: 45
+
+      - name: Check model file
+        run: |
+          ls -lh mnist-project/models/mnist_model.pkl
+          echo "Model size: $(du -h mnist-project/models/mnist_model.pkl | cut -f1)"
+
+      - name: Upload model as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: mnist-model
+          path: mnist-project/models/mnist_model.pkl
+          retention-days: 30
+
+      - name: Commit model to repository
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add mnist-project/models/mnist_model.pkl
+          git diff --quiet && git diff --staged --quiet || git commit -m "Train: Update MNIST model [skip ci]"
+          git push
+
+      - name: Create Release with Model
+        if: github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: mnist-project/models/mnist_model.pkl
+          tag_name: mnist-model-${{ github.run_number }}
+          body: |
+            MNIST Model trained on ${{ github.event.head_commit.timestamp }}
+
+            This model file can be used directly with the FastAPI backend.
+
+            **Download:** mnist_model.pkl
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Workflow Summary
+        run: |
+          echo "## ✅ MNIST Model Training Completed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Model Size:** $(du -h mnist-project/models/mnist_model.pkl | cut -f1)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Training Time:** $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** Success ✨" >> $GITHUB_STEP_SUMMARY
